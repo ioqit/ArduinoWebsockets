@@ -1,0 +1,21 @@
+{
+  "name": "ArduinoWebsockets",
+  "description": "An optimized library for writing modern WebSocket apps with Arduino. Featuring modern callbacks (supports lambdas) and a minimal interface. Contains a websockets Client and Server. Supports all features of the RFC (pings, pongs, binary and text data, error codes) and WSS (Websockets over SSL). This patched version fixes ESP32 setInsecure() fallback, Bad-file-number noise on failed SSL connect, and adds cleanup()/reset() to release the ~45 KB mbedtls context held by WiFiClientSecure.",
+  "keywords": "esp32,esp8266,websocket",
+  "license": "",
+  "authors": [
+    {
+      "name": "Gil Maimon <mail.gilmaimon@gmail.com>",
+      "url": "https://github.com/gilmaimon",
+      "maintainer": true
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gilmaimon/ArduinoWebsockets.git"
+  },
+  "version": "0.5.5",
+  "frameworks": ["arduino", "espidf", "*"],
+  "platforms": ["espressif32", "espressif8266"],
+  "headers": "ArduinoWebsockets.h"
+}
