@@ -1,8 +1,11 @@
+[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
+[![简体中文](https://img.shields.io/badge/lang-简体中文-red.svg)](README_zh-CN.md)
+
 [![arduino-library-badge](https://www.ardu-badge.com/badge/ArduinoWebsockets.svg?)](https://www.ardu-badge.com/ArduinoWebsockets)  [![Build Status](https://travis-ci.org/gilmaimon/ArduinoWebsockets.svg?branch=master)](https://travis-ci.org/gilmaimon/ArduinoWebsockets)
 
-# Arduino Websockets
+# Arduino WebSockets
 
-A library for writing modern websockets applications with Arduino (see [prerequisites](https://github.com/gilmaimon/ArduinoWebsockets#prerequisites) for supported platforms). This project is based on my project [TinyWebsockets](https://github.com/gilmaimon/TinyWebsockets).
+An optimized library for writing modern WebSocket apps with Arduino (see [prerequisites](https://github.com/gilmaimon/ArduinoWebsockets#prerequisites) for supported platforms). This project is based on my project [TinyWebsockets](https://github.com/gilmaimon/TinyWebsockets).
 
 The library provides simple and easy interface for websockets work (Client and Server). See the [basic-usage](#Basic-Usage) guide and the [examples](#Full-Examples).
 
@@ -279,13 +282,14 @@ Thanks for everyone who reported a bug, suggested a feature and contributed to t
       <td align="center"><a href="https://github.com/mmcArg"><img src="https://github.com/mmcArg.png" width="100px;" alt="mmcArg"/><br /><sub><b>mmcArg</b></sub></a><br /></td>
       <td align="center"><a href="https://github.com/JohnInWI"><img src="https://github.com/JohnInWI.png" width="100px;" alt="JohnInWI"/><br /><sub><b>JohnInWI</b></sub></a><br /></td>
       <td align="center"><a href="https://github.com/logdog2709"><img src="https://github.com/logdog2709.png" width="100px;" alt="logdog2709"/><br /><sub><b>logdog2709</b></sub></a><br /></td>
-       <td align="center"><a href="https://github.com/elC0mpa"><img src="https://github.com/elC0mpa.png" width="100px;" alt="elC0mpa"/><br /><sub><b>elC0mpa</b></sub></a><br /></td>
+      <td align="center"><a href="https://github.com/elC0mpa"><img src="https://github.com/elC0mpa.png" width="100px;" alt="elC0mpa"/><br /><sub><b>elC0mpa</b></sub></a><br /></td>
  </tr>
     
  <tr>
       <td align="center"><a href="https://github.com/oofnik"><img src="https://github.com/oofnik.png" width="100px;" alt="oofnik"/><br /><sub><b>⭐️ oofnik</b></sub></a><br /></td>
-          <td align="center"><a href="https://github.com/zastrixarundell"><img src="https://github.com/zastrixarundell.png" width="100px;" alt="zastrixarundell"/><br /><sub><b>⭐️ zastrixarundell</b></sub></a><br /></td>
-        <td align="center"><a href="https://github.com/elielmarcos"><img src="https://github.com/elielmarcos.png" width="100px;" alt="elielmarcos"/><br /><sub><b>elielmarcos</b></sub></a><br /></td>
+      <td align="center"><a href="https://github.com/zastrixarundell"><img src="https://github.com/zastrixarundell.png" width="100px;" alt="zastrixarundell"/><br /><sub><b>⭐️ zastrixarundell</b></sub></a><br /></td>
+      <td align="center"><a href="https://github.com/elielmarcos"><img src="https://github.com/elielmarcos.png" width="100px;" alt="elielmarcos"/><br /><sub><b>elielmarcos</b></sub></a><br /></td>
+      <td align="center"><a href="https://github.com/ioqite"><img src="https://github.com/ioqite.png" width="100px;" alt="Ioqit"/><br /><sub><b>Ioqit</b></sub></a><br /></td>
 
  </tr>
  
@@ -328,3 +332,5 @@ Thanks for everyone who reported a bug, suggested a feature and contributed to t
 ](https://github.com/khoih-prog). Thank you Khoi!
 - **29/07/21 (v0.5.2)** - Merged PR by [ONLYstcm](https://github.com/ONLYstcm) which added a (configurable) timeout for connections. Thank you ONLYstcm.
 - **06/08/21 (v0.5.3)** - Merged PR by [ln-12](https://github.com/ln-12) which added a `connectSecure` method to support WSS connection with the classic interface (host, port, path). Thank you!
+- **03/10/2026 (v0.5.5)** - Fix memory leaks, ESP32 SSL fallback, and add cleanup() API, see details in [v0.5.5-change-log(en).md](v0.5.5-change-log(en).md)
+
