@@ -8,15 +8,26 @@ namespace websockets { namespace network {
   class GenericEspTcpClient : public TcpClient {
   public:
     GenericEspTcpClient(WifiClientImpl c) : client(c) {
-      client.setNoDelay(true);
+      // Only enable NoDelay when the wrapped client is actually connected.
+      // Calling setNoDelay on a moved-from / unconnected client can hit
+      // setSocketOption(): fail on 0, errno: 9, "Bad file number" on some
+      // ESP core versions (notably after a failed SSL handshake).
+      if (client.connected()) {
+        client.setNoDelay(true);
+      }
     }
-    
+
     GenericEspTcpClient() {}
 
     bool connect(const WSString& host, const int port) {
       yield();
       auto didConnect = client.connect(host.c_str(), port);
-      client.setNoDelay(true);
+      // Bug 2 fix: only tune the socket when connect() actually succeeded.
+      // If the SSL/TCP handshake failed the underlying socket is invalid and
+      // setNoDelay would emit "Bad file number" (EBADF) noise on ESP32/ESP8266.
+      if (didConnect) {
+        client.setNoDelay(true);
+      }
       return didConnect;
     }
 
@@ -70,11 +81,19 @@ namespace websockets { namespace network {
 
     void close() override {
       yield();
-      client.stop();
+      // Guard: stop() on an already-closed / moved-from client is safe on ESP
+      // cores, but we still avoid the call when we know there is nothing to do.
+      if (client.connected()) {
+        client.stop();
+      }
     }
 
     virtual ~GenericEspTcpClient() {
-      client.stop();
+      // Defensive: ensure the underlying TCP/SSL socket is released even if
+      // the user forgot to call close(). stop() is a no-op on a closed socket.
+      if (client.connected()) {
+        client.stop();
+      }
     }
 
   protected:

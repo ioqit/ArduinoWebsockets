@@ -22,7 +22,8 @@ namespace websockets {
     WebsocketsClient::WebsocketsClient(const WebsocketsClient& other) :
         _client(other._client),
         _endpoint(other._endpoint),
-        _connectionOpen(other._client->available()),
+        // Null-safe: after cleanup() or a move, other._client may be null.
+        _connectionOpen(other._client ? other._client->available() : false),
         _messagesCallback(other._messagesCallback),
         _eventsCallback(other._eventsCallback),
         _sendMode(other._sendMode) {
@@ -35,7 +36,8 @@ namespace websockets {
     WebsocketsClient::WebsocketsClient(const WebsocketsClient&& other) :
         _client(other._client),
         _endpoint(other._endpoint),
-        _connectionOpen(other._client->available()),
+        // Null-safe: after cleanup() or a move, other._client may be null.
+        _connectionOpen(other._client ? other._client->available() : false),
         _messagesCallback(other._messagesCallback),
         _eventsCallback(other._eventsCallback),
         _sendMode(other._sendMode) {
@@ -53,7 +55,8 @@ namespace websockets {
         this->_client = other._client;
         this->_messagesCallback = other._messagesCallback;
         this->_eventsCallback = other._eventsCallback;
-        this->_connectionOpen = other._connectionOpen;
+        // Null-safe: after cleanup() or a move, other._client may be null.
+        this->_connectionOpen = other._client ? other._client->available() : false;
         this->_sendMode = other._sendMode;
 
         // delete other's client
@@ -70,7 +73,8 @@ namespace websockets {
         this->_client = other._client;
         this->_messagesCallback = other._messagesCallback;
         this->_eventsCallback = other._eventsCallback;
-        this->_connectionOpen = other._connectionOpen;
+        // Null-safe: after cleanup() or a move, other._client may be null.
+        this->_connectionOpen = other._client ? other._client->available() : false;
         this->_sendMode = other._sendMode;
 
         // delete other's client
@@ -197,31 +201,37 @@ namespace websockets {
 
     #ifdef ESP8266
         if(
-				this->_optional_ssl_fingerprint
-			|| 	(this->_optional_ssl_rsa_cert && this->_optional_ssl_rsa_private_key)
-			|| 	(this->_optional_ssl_ec_cert && this->_optional_ssl_ec_private_key)
-			|| 	this->_optional_ssl_trust_anchors
-			|| 	this->_optional_ssl_known_key
-		) {
+                                this->_optional_ssl_fingerprint
+                        ||      (this->_optional_ssl_rsa_cert && this->_optional_ssl_rsa_private_key)
+                        ||      (this->_optional_ssl_ec_cert && this->_optional_ssl_ec_private_key)
+                        ||      this->_optional_ssl_trust_anchors
+                        ||      this->_optional_ssl_known_key
+                ) {
             if(this->_optional_ssl_fingerprint) {
                 client->setFingerprint(this->_optional_ssl_fingerprint);
             }
             if(this->_optional_ssl_trust_anchors) {
                 client->setTrustAnchors(this->_optional_ssl_trust_anchors);
             }
-			if(this->_optional_ssl_known_key) {
-				client->setKnownKey(this->_optional_ssl_known_key);
-			}
+                        if(this->_optional_ssl_known_key) {
+                                client->setKnownKey(this->_optional_ssl_known_key);
+                        }
             if(this->_optional_ssl_rsa_cert && this->_optional_ssl_rsa_private_key) {
                 client->setClientRSACert(this->_optional_ssl_rsa_cert, this->_optional_ssl_rsa_private_key);
             }
-			if(this->_optional_ssl_ec_cert && this->_optional_ssl_ec_private_key) {
+                        if(this->_optional_ssl_ec_cert && this->_optional_ssl_ec_private_key) {
                 client->setClientECCert(this->_optional_ssl_ec_cert, this->_optional_ssl_ec_private_key);
             }
         } else {
             client->setInsecure();
         }
     #elif defined(ESP32)
+        // Bug 1 fix: ESP32 now has the same fallback as ESP8266. If the user
+        // has not configured any CA cert / client cert / private key we
+        // explicitly call setInsecure() on the underlying WiFiClientSecure.
+        // Without this, many ESP32 core versions will fail the SSL handshake
+        // because WiFiClientSecure has no trust anchor at all and refuses to
+        // proceed even when the user is happy to skip verification.
         if(this->_optional_ssl_ca_cert) {
             client->setCACert(this->_optional_ssl_ca_cert);
         }
@@ -230,6 +240,11 @@ namespace websockets {
         }
         if(this->_optional_ssl_private_key) {
             client->setPrivateKey(this->_optional_ssl_private_key);
+        }
+        if(!this->_optional_ssl_ca_cert
+            && !this->_optional_ssl_client_ca
+            && !this->_optional_ssl_private_key) {
+            client->setInsecure();
         }
     #endif
 
@@ -243,6 +258,17 @@ namespace websockets {
     }
 
     bool WebsocketsClient::connect(WSInterfaceString _url) {
+        // Hardening: release any previous TCP/SSL state before reconnecting.
+        // This MUST run before upgradeToSecuredConnection() — otherwise the
+        // new SecuredEsp32TcpClient allocated by upgrade would be immediately
+        // destroyed by cleanup(). Repeated connect()/close() cycles on ESP32
+        // would otherwise keep the previous WiFiClientSecure (and its ~45 KB
+        // mbedtls context) alive via the shared_ptr in _endpoint, while the
+        // new connection allocates another one on top — a classic heap-growth
+        // pattern. cleanup() is idempotent and null-guarded, so calling it
+        // unconditionally here is safe even on a fresh / already-clean state.
+        cleanup();
+
         WSString url = internals::fromInterfaceString(_url);
         WSString protocol = "";
         int defaultPort = 0;
@@ -308,6 +334,17 @@ namespace websockets {
     }
 
     bool WebsocketsClient::connect(WSInterfaceString host, int port, WSInterfaceString path) {
+        // If _client is null (e.g. after cleanup() or after a moved-from
+        // state), rebuild a default plain TCP client so the upcoming handshake
+        // has something to talk through. If the caller used wss:// / https://
+        // then upgradeToSecuredConnection() was already invoked upstream and
+        // replaced _client with a secured one — in that case _client is
+        // non-null here and we leave it alone.
+        if (!this->_client) {
+            this->_client = std::make_shared<WSDefaultTcpClient>();
+            this->_endpoint.setInternalSocket(this->_client);
+        }
+
         this->_connectionOpen = this->_client->connect(internals::fromInterfaceString(host), port);
         if (!this->_connectionOpen) return false;
 
@@ -359,8 +396,14 @@ namespace websockets {
     }
 
     bool WebsocketsClient::connectSecure(WSInterfaceString host, int port, WSInterfaceString path) {
+        // Hardening: release any previous TCP/SSL state before reconnecting.
+        // See connect(WSInterfaceString url) for the rationale — cleanup()
+        // MUST run before upgradeToSecuredConnection() to avoid destroying
+        // the freshly allocated SecuredEsp32TcpClient.
+        cleanup();
+
         upgradeToSecuredConnection();
-        
+
         return connect(host, port, path);
     }
 
@@ -596,31 +639,31 @@ namespace websockets {
 
     void WebsocketsClient::setInsecure() {
         this->_optional_ssl_fingerprint = nullptr;
-    	this->_optional_ssl_rsa_cert = nullptr;
-    	this->_optional_ssl_rsa_private_key = nullptr;
-		this->_optional_ssl_ec_cert = nullptr;
-    	this->_optional_ssl_ec_private_key = nullptr;
-    	this->_optional_ssl_trust_anchors = nullptr;
-		this->_optional_ssl_known_key = nullptr;
+        this->_optional_ssl_rsa_cert = nullptr;
+        this->_optional_ssl_rsa_private_key = nullptr;
+                this->_optional_ssl_ec_cert = nullptr;
+        this->_optional_ssl_ec_private_key = nullptr;
+        this->_optional_ssl_trust_anchors = nullptr;
+                this->_optional_ssl_known_key = nullptr;
     }
 
     void WebsocketsClient::setClientRSACert(const X509List *cert, const PrivateKey *sk) {
-    	this->_optional_ssl_rsa_cert = cert;
-    	this->_optional_ssl_rsa_private_key = sk;
-	}
+        this->_optional_ssl_rsa_cert = cert;
+        this->_optional_ssl_rsa_private_key = sk;
+        }
 
-	void WebsocketsClient::setClientECCert(const X509List *cert, const PrivateKey *sk) {
-    	this->_optional_ssl_ec_cert = cert;
-    	this->_optional_ssl_ec_private_key = sk;
-	}
+        void WebsocketsClient::setClientECCert(const X509List *cert, const PrivateKey *sk) {
+        this->_optional_ssl_ec_cert = cert;
+        this->_optional_ssl_ec_private_key = sk;
+        }
 
     void WebsocketsClient::setTrustAnchors(const X509List *ta){
-    	this->_optional_ssl_trust_anchors = ta;
-	}
+        this->_optional_ssl_trust_anchors = ta;
+        }
 
-	void WebsocketsClient::setKnownKey(const PublicKey *pk) {
-		this->_optional_ssl_known_key = pk;
-	}
+        void WebsocketsClient::setKnownKey(const PublicKey *pk) {
+                this->_optional_ssl_known_key = pk;
+        }
 
 #elif defined(ESP32)
     void WebsocketsClient::setCACert(const char* ca_cert) {
@@ -643,8 +686,59 @@ namespace websockets {
 #endif
 
     WebsocketsClient::~WebsocketsClient() {
-        if(available()) {
-            this->close(CloseReason_GoingAway);
+        // Hardening: unconditionally tear everything down. Even if the user
+        // forgot to call close()/cleanup(), going out of scope must release
+        // the underlying TCP/SSL socket and the ~45 KB mbedtls context held
+        // by WiFiClientSecure on ESP32. cleanup() is idempotent and fully
+        // null-guarded, so this is safe on a moved-from or already-clean
+        // instance.
+        cleanup();
+    }
+
+    void WebsocketsClient::cleanup() {
+        // Step 1: if the WebSocket connection is still open, send a close
+        // frame and stop the underlying TCP/SSL socket. Null-guarded so this
+        // is safe on a moved-from instance (where _client is null) and on an
+        // already-cleaned instance (where _client is also null).
+        if (this->_client) {
+            if (this->_connectionOpen) {
+                // _endpoint.close() will:
+                //   - bail out cleanly if _endpoint's internal socket is null
+                //     or already disconnected (null guard added in endpoint)
+                //   - otherwise send a WS close frame with GoingAway and call
+                //     _client->close() which stops the TCP/SSL socket
+                _endpoint.close(CloseReason_GoingAway);
+                this->_connectionOpen = false;
+            }
+            // Defensive: ensure the underlying TCP/SSL socket is released
+            // even if _endpoint.close() short-circuited (e.g. peer already
+            // disconnected). close() on the TcpClient is a no-op on an
+            // already-closed socket.
+            this->_client->close();
         }
+
+        // Step 2: drop the WebsocketsClient's reference to the TcpClient.
+        // This alone does NOT free the ~45 KB — _endpoint still holds another
+        // reference. Step 3 is what actually drops the refcount to 0.
+        this->_client.reset();
+
+        // Step 3: rebuild _endpoint with a null _client. This releases the
+        // endpoint's reference too, so the TcpClient's refcount finally hits
+        // 0 and the destructor chain runs:
+        //   ~SecuredEsp32TcpClient -> ~GenericEspTcpClient<WiFiClientSecure>
+        //   -> ~WiFiClientSecure -> mbedtls context free (~45 KB on ESP32).
+        // It also prevents any subsequent call into _endpoint (e.g. via a
+        // stale callback) from dereferencing a dangling pointer — the
+        // endpoint methods are null-guarded and will short-circuit.
+        this->_endpoint.setInternalSocket(nullptr);
+
+        // Step 4: clear custom headers so a future connect() does not reuse
+        // stale Authorization / Cookie / etc. headers from the previous
+        // connection.
+        this->_customHeaders.clear();
+
+        // Step 5: reset send mode so a future connect() starts in the normal
+        // (non-streaming) mode even if the previous session died mid-stream.
+        this->_sendMode = SendMode_Normal;
     }
 }

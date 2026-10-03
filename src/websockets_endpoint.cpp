@@ -122,6 +122,11 @@ namespace internals {
     }
 
     bool WebsocketsEndpoint::poll() {
+        // Null guard: after cleanup() the internal socket is null. Returning
+        // false (nothing to poll) is the safe behaviour — callers such as
+        // WebsocketsClient::poll() already check available() first, but this
+        // guards against direct endpoint use.
+        if (!this->_client) return false;
         return this->_client->poll();
     }
 
@@ -192,6 +197,9 @@ namespace internals {
     }
 
     WebsocketsFrame WebsocketsEndpoint::_recv() {
+        // Null guard: after cleanup() the internal socket is null. Returning
+        // an empty frame signals "nothing to read" to recv().
+        if (!this->_client) return WebsocketsFrame();
         auto header = readHeaderFromSocket(*this->_client);
         if(!_client->available()) return WebsocketsFrame(); // In case of faliure
 
@@ -304,7 +312,9 @@ namespace internals {
         return {};
     }
 
-    WebsocketsMessage WebsocketsEndpoint::recv() {        
+    WebsocketsMessage WebsocketsEndpoint::recv() {
+        // Null guard: after cleanup() there is nothing to receive.
+        if (!this->_client) return {};
         auto frame = _recv();
         if (frame.isEmpty()) {
             return {};
@@ -381,6 +391,11 @@ namespace internals {
             return false;
         }
 #endif
+        // Null guard: after cleanup() the internal socket is null. Returning
+        // false signals "send failed" — callers (ping/pong/close/stream)
+        // already handle a false return gracefully.
+        if (!this->_client) return false;
+
         // send the header
         std::string message_data = getHeader(len, opcode, fin, mask);
 
@@ -401,7 +416,12 @@ namespace internals {
 
     void WebsocketsEndpoint::close(CloseReason reason) {
         this->_closeReason = reason;
-        
+
+        // Null guard: after cleanup() the internal socket is null. We still
+        // record the close reason (in case the caller reads it later) but
+        // bail out before touching the socket. This makes close() safe to
+        // call from cleanup() / destructor on an already-torn-down endpoint.
+        if (!this->_client) return;
         if(!this->_client->available()) return;
 
         if(reason == CloseReason_None) {
